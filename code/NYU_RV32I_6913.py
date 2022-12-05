@@ -13,7 +13,7 @@ class InsMem(object):
     def __init__(self, name, ioDir):
         self.id = name
 
-        with open(ioDir + "\\imem.txt") as im:
+        with open(ioDir + "/imem.txt") as im:
             self.IMem = [data.replace("\n", "") for data in im.readlines()]
 
     def readInstr(self, ReadAddress):
@@ -23,6 +23,7 @@ class InsMem(object):
         # i = 0, 1, 2, 3 (4 lines in the imem.txt file makes one instruction)
         for i in range(4):
             instruction += self.IMem[ReadAddress + i]
+        # instruction = ''.join(reversed(instruction))
 
         return instruction
         # return self.IMem[ReadAddress]
@@ -32,18 +33,37 @@ class DataMem(object):
     def __init__(self, name, ioDir):
         self.id = name
         self.ioDir = ioDir
-        with open(ioDir + "\\dmem.txt") as dm:
-            self.DMem = [data.replace("\n", "") for data in dm.readlines()]
+        self.DMem = ['00000000' for i in range(0,MemSize)]
+        with open(ioDir + "/dmem.txt") as dm:
+                buf = [data.replace("\n", "") for data in dm.readlines()]
+        for i in range(0, len(buf)):
+            self.DMem[i] = buf[i]
 
-    def readInstr(self, ReadAddress):
+
+    def readDataMem(self, ReadAddress):
         # read data memory
         # return 32 bit hex val
-        return self.DMem[ReadAddress]
+        if isinstance(ReadAddress, str):
+            ReadAddress = bitstring_to_int(ReadAddress)
+
+        data = ''
+        for i in range(4):
+            data += self.DMem[ReadAddress + i]
+        return data
 
     def writeDataMem(self, Address, WriteData):
         # write data into byte addressable memory
+        if isinstance(WriteData, int):
+            WriteData = int_to_bitstring(WriteData)
+        if isinstance(Address, str):
+            Address = bitstring_to_int(Address)
 
-        self.Dmem[Address] = WriteData
+        parsedData = [WriteData[:8], WriteData[8:16], WriteData[16:24], WriteData[24:]]
+        print('Before write: {}', format(self.DMem[Address:Address + 10]))
+        print(Address)
+        for i in range(4):
+            self.DMem[Address + i] = parsedData[i]
+        print('After write: {}', format(self.DMem[Address:Address + 10]))
 
     def outputDataMem(self):
         resPath = self.ioDir + "\\" + self.id + "_DMEMResult.txt"
@@ -58,11 +78,11 @@ class RegisterFile(object):
 
     def readRF(self, Reg_addr):
         # Fill in
-        return self.Registers[Reg_addr]
+        return self.Registers[int(str(Reg_addr),2)]
 
     def writeRF(self, Reg_addr, Wrt_reg_data):
         # Fill in
-        self.Registers[Reg_addr] = Wrt_reg_data
+        self.Registers[int(str(Reg_addr),2)] = Wrt_reg_data
 
     def outputRF(self, cycle):
         op = ["-" * 70 + "\n", "State of RF after executing cycle:" + str(cycle) + "\n"]
@@ -106,14 +126,15 @@ class Core(object):
 
 class SingleStageCore(Core):
     def __init__(self, ioDir, imem, dmem):
-        super(SingleStageCore, self).__init__(ioDir + "\\SS_", imem, dmem)
-        self.opFilePath = ioDir + "\\StateResult_SS.txt"
+        super(SingleStageCore, self).__init__(ioDir + "/SS_", imem, dmem)
+        self.opFilePath = ioDir + "/StateResult_SS.txt"
 
     def step(self):
         # Your implementation start here
         # 1. fetch instruction from the memory
         PC = self.state.IF['PC']
         instruction = self.ext_imem.readInstr(PC)
+        print(instruction)
 
         # 2. read register and decode the instruction
         parser = Parser(instruction)
@@ -152,7 +173,8 @@ class SingleStageCore(Core):
             alu_output = alu_output != 0
 
         branch_logic = main_con.Branch & alu_output
-        self.nextState.IF['PC'] = self.branch_MUX(PC + 4, PC + imm, branch_logic)
+        print(imm)
+        self.nextState.IF['PC'] = self.branch_MUX(PC + 4, PC + int(str(imm), 2), branch_logic)
 
         # EX stage
         self.state.EX = {"nop": False, "Read_data1": rs1_value, "Read_data2": rs2_value, "Imm": imm, "Rs": rs1, "Rt": rs2,
@@ -178,7 +200,7 @@ class SingleStageCore(Core):
         self.state.WB = {"Wrt_data": wb_value, "Rs": rs1, "Rt": rs2, "Wrt_reg_addr": main_con.MemtoReg, "wrt_enable": main_con.RegWrite}
         # Our implementation end here
 
-        self.halted = True
+        # self.halted = True
         if self.state.IF["nop"]:
             self.halted = True
 
