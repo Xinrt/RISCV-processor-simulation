@@ -12,15 +12,18 @@ MemSize = 1000  # memory size, in reality, the memory size should be 2^32, but f
 class InsMem(object):
     def __init__(self, name, ioDir):
         self.id = name
-
-        with open(ioDir + "/imem.txt") as im:
+        self.IMem = ['00000000' for i in range(0,MemSize)]
+        with open(ioDir + "/6913_ProjA_TC/TC3/imem.txt") as im:
             self.IMem = [data.replace("\n", "") for data in im.readlines()]
+        # for i in range(0, len(buf)):
+        #     self.IMem[i] = buf[i]
 
     def readInstr(self, ReadAddress):
         # read instruction memory
         # return 32 bit hex val
         instruction = ''
         # i = 0, 1, 2, 3 (4 lines in the imem.txt file makes one instruction)
+        print("Address: ", ReadAddress)
         for i in range(4):
             instruction += self.IMem[ReadAddress + i]
         # instruction = ''.join(reversed(instruction))
@@ -34,7 +37,7 @@ class DataMem(object):
         self.id = name
         self.ioDir = ioDir
         self.DMem = ['00000000' for i in range(0,MemSize)]
-        with open(ioDir + "/dmem.txt") as dm:
+        with open(ioDir + "/6913_ProjA_TC/TC3/dmem.txt") as dm:
                 buf = [data.replace("\n", "") for data in dm.readlines()]
         for i in range(0, len(buf)):
             self.DMem[i] = buf[i]
@@ -66,7 +69,7 @@ class DataMem(object):
         print('After write: {}', format(self.DMem[Address:Address + 10]))
 
     def outputDataMem(self):
-        resPath = self.ioDir + "\\" + self.id + "_DMEMResult.txt"
+        resPath = self.ioDir + "/" + self.id + "_DMEMResult.txt"
         with open(resPath, "w") as rp:
             rp.writelines([str(data) + "\n" for data in self.DMem])
 
@@ -78,10 +81,12 @@ class RegisterFile(object):
 
     def readRF(self, Reg_addr):
         # Fill in
+        print("Reg_addr:", Reg_addr)
         return self.Registers[int(str(Reg_addr),2)]
 
     def writeRF(self, Reg_addr, Wrt_reg_data):
         # Fill in
+        print("write_data:", Wrt_reg_data)
         self.Registers[int(str(Reg_addr),2)] = Wrt_reg_data
 
     def outputRF(self, cycle):
@@ -134,7 +139,7 @@ class SingleStageCore(Core):
         # 1. fetch instruction from the memory
         PC = self.state.IF['PC']
         instruction = self.ext_imem.readInstr(PC)
-        print(instruction)
+        
 
         # 2. read register and decode the instruction
         parser = Parser(instruction)
@@ -143,6 +148,7 @@ class SingleStageCore(Core):
         opcode = parser.opcode
         type, ins, rs2, rs1, rd = parser.parse()
         imm = ImmGen(instruction, type)
+
         print('{}\t{}\tx{}\tx{}\tx{}\t{}'.format(self.cycle, ins, rd, rs1, rs2, imm))
 
         # if HALT
@@ -163,7 +169,9 @@ class SingleStageCore(Core):
         alu_con = ALU_control(opcode, funct7, funct3, main_con.ALUOp)
         print("alu_con: ", alu_con)
         input2 = self.EX_MUX(rs2_value, imm, main_con.ALUSrc)
-
+        print("ins: ", ins)
+        print("rs1_value: ", rs1_value)
+        print("input2: ", input2)
         alu_output = ALU(alu_con, ins, rs1_value, input2)
 
         # Branch
@@ -173,8 +181,9 @@ class SingleStageCore(Core):
             alu_output = alu_output != 0
 
         branch_logic = main_con.Branch & alu_output
-        print(imm)
-        self.nextState.IF['PC'] = self.branch_MUX(PC + 4, PC + int(str(imm), 2), branch_logic)
+        
+        
+        self.nextState.IF['PC'] = self.branch_MUX(PC + 4, PC + bitstring_to_int(str(imm)), branch_logic)
 
         # EX stage
         self.state.EX = {"nop": False, "Read_data1": rs1_value, "Read_data2": rs2_value, "Imm": imm, "Rs": rs1, "Rt": rs2,
