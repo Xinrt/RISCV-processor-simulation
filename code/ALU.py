@@ -28,8 +28,19 @@ def ALU_control(opcode, funct7, funct3, ALUop):
 
 
 def ALU(ALU_control, ins, input1_raw, input2_raw):
-    input1 = bitstring_to_int(input1_raw)
-    input2 = bitstring_to_int(input2_raw)
+
+    if (type(input1_raw) == int):
+        input1 = input1_raw
+    else: 
+        input1 = bitstring_to_int(input1_raw)
+
+    if (type(input2_raw) == int):
+        input2 = input2_raw
+    else: 
+        input2 = bitstring_to_int(input2_raw)
+    # input2 = bitstring_to_int(input2_raw)
+    # input1 = input1_raw
+    # input2 = input2_raw
     if ALU_control == ADD:
         output = do_add(input1, input2)
     elif ALU_control == SUB:
