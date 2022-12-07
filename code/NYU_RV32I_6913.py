@@ -1,10 +1,11 @@
 import os
 import argparse
 
-from ALU import ALU_control, ALU
+from ALU import ALU
+from ALUControl import ALU_control
 from ControlUnit import ControlUnit
 from convertor import *
-from decoder import Parser, ImmGen
+from decoder import Parser, getImm
 
 MemSize = 1000  # memory size, in reality, the memory size should be 2^32, but for this lab, for the space resaon, we keep it as this large number, but the memory is still 32-bit addressable.
 
@@ -136,22 +137,23 @@ class SingleStageCore(Core):
 
     def step(self):
         # Your implementation start here
-        # 1. fetch instruction from the memory
-        PC = self.state.IF['PC']
-        instruction = self.ext_imem.readInstr(PC)
         
-
-        # 2. read register and decode the instruction
-        parser = Parser(instruction)
+        PC = self.state.IF['PC']
+        instr = self.ext_imem.readInstr(PC)
+        parser = Parser(instr)
         funct7 = parser.funct7
         funct3 = parser.funct3
         opcode = parser.opcode
         type, ins, rs2, rs1, rd = parser.parse()
-        imm = ImmGen(instruction, type)
+        imm = getImm(instr, type)
 
-        print('{}\t{}\tx{}\tx{}\tx{}\t{}'.format(self.cycle, ins, rd, rs1, rs2, imm))
+        print("cycle ", self.cycle)
+        print("ins: ", ins)
+        print("rd: ", rd)
+        print("rs1: ", rs1)
+        print("rs2: ", rs2)
+        print("imm: ", imm)
 
-        # if HALT
         if type == 'H':
             self.state.IF['nop'] = True
             self.state.ID['nop'] = True
@@ -159,64 +161,59 @@ class SingleStageCore(Core):
             self.state.MEM['nop'] = True
             self.state.WB['nop'] = True
 
-        self.state.ID['Instr'] = instruction
+        self.state.ID['Instr'] = instr
 
-        # 3. execute the instruction or calculate the new address
-        rs1_value = self.myRF.readRF(rs1)
-        rs2_value = self.myRF.readRF(rs2)
+        rs1_data = self.myRF.readRF(rs1)
+        rs2_data = self.myRF.readRF(rs2)
 
         main_con = ControlUnit(type, ins)
         alu_con = ALU_control(opcode, funct7, funct3, main_con.ALUOp)
-        print("alu_con: ", alu_con)
-        input2 = self.EX_MUX(rs2_value, imm, main_con.ALUSrc)
-        print("ins: ", ins)
-        print("rs1_value: ", rs1_value)
-        print("input2: ", input2)
-        alu_output = ALU(alu_con, ins, rs1_value, input2)
+        input2 = self.EX_MUX(rs2_data, imm, main_con.ALUSrc)
+        aluRes = ALU(alu_con, ins, rs1_data, input2)
 
-        # Branch
+        
         if ins == 'BEQ':
-            alu_output = alu_output == 0
+            aluRes = aluRes == 0
         elif ins == 'BNE':
-            alu_output = alu_output != 0
+            aluRes = aluRes != 0
 
-        branch_logic = main_con.Branch & alu_output
+        branchControl = main_con.Branch & aluRes
         
         
-        self.nextState.IF['PC'] = self.branch_MUX(PC + 4, PC + bitstring_to_int(str(imm)), branch_logic)
+        self.nextState.IF['PC'] = self.branch_MUX(PC + 4, PC + bitstring_to_int(str(imm)), branchControl)
 
-        # EX stage
-        self.state.EX = {"nop": False, "Read_data1": rs1_value, "Read_data2": rs2_value, "Imm": imm, "Rs": rs1, "Rt": rs2,
+        
+        self.state.EX = {"nop": False, "Read_data1": rs1_data, "Read_data2": rs2_data, "Imm": imm, "Rs": rs1, "Rt": rs2,
                    "Wrt_reg_addr": main_con.MemtoReg,
                    "is_I_type": False, "rd_mem": main_con.MemRead, "wrt_mem": main_con.MemWrite,
                    "alu_op": main_con.ALUOp, "wrt_enable": main_con.RegWrite}
 
-        # 4. access an operand in data memory
+        
         lw_value = 0
         if main_con.MemWrite:
-            self.do_store(rs2, alu_output)
+            self.do_store(rs2, aluRes)
         elif main_con.MemRead:
-            lw_value = self.do_load(alu_output)
+            lw_value = self.do_load(aluRes)
 
-        wb_value = self.WB_MUX(alu_output, lw_value, main_con.MemtoReg)
+        wb_value = self.WB_MUX(aluRes, lw_value, main_con.MemtoReg)
 
-        self.state.MEM = {"ALUresult": alu_output, "Store_data": alu_output, "Rs": rs1, "Rt": rs2, "Wrt_reg_addr": main_con.MemtoReg, "rd_mem": main_con.MemRead}
+        self.state.MEM = {"ALUresult": aluRes, "Store_data": aluRes, "Rs": rs1, "Rt": rs2, "Wrt_reg_addr": main_con.MemtoReg, "rd_mem": main_con.MemRead}
 
-        # 5. write the result into a register
+        
         if main_con.RegWrite:
             self.do_write_back(rd, wb_value)
 
         self.state.WB = {"Wrt_data": wb_value, "Rs": rs1, "Rt": rs2, "Wrt_reg_addr": main_con.MemtoReg, "wrt_enable": main_con.RegWrite}
-        # Our implementation end here
+        
 
-        # self.halted = True
+        
         if self.state.IF["nop"]:
             self.halted = True
 
-        self.myRF.outputRF(self.cycle)  # dump RF
-        self.printState(self.nextState, self.cycle)  # print states after executing cycle 0, cycle 1, cycle 2 ...
+        self.myRF.outputRF(self.cycle)  
+        self.printState(self.nextState, self.cycle)  
 
-        self.state = self.nextState  # The end of the cycle and updates the current state with the values calculated in this cycle
+        self.state = self.nextState
         self.cycle += 1
 
     def printState(self, state, cycle):

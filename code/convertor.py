@@ -32,6 +32,7 @@ def int_to_bitstring(bit: int) -> str:
 
 
 def bitstring_to_int(bitstring):
+    print(bitstring)
     uint = int(str(bitstring), 2)
     bitlength = len(str(bitstring))
     if (uint & (1 << (bitlength - 1))) != 0:
